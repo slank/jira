@@ -215,15 +215,28 @@ class JiraTestManager(object):
                 # [7-8] python version A=0, B=1,..
                 # [9] A,B -- we may need more than one project
 
-                prefix = 'Z' + (re.sub("[^A-Z]", "",
-                                       getpass.getuser().upper()))[0:6] + \
-                         str(sys.version_info[0]) + \
-                         str(sys.version_info[1])
+                """ `jid` is important for avoiding concurency problems when
+                executing tests in parallel as we have only one test instance.
 
-                self.project_a = prefix + 'A'  # old XSS
+                Tests run in parallle:
+                * git branches master or developer, git pr or developers running
+                  tests outside Travis
+                * Travis is using "Travis" username
+
+                https://docs.travis-ci.com/user/environment-variables/
+                """
+                user = re.sub("[^A-Z_]", "", getpass.getuser().upper())[0:6]
+                if user == 'TRAVIS' and 'TRAVIS_JOB_NUMBER' in sys.environ:
+                    self.jid = user + sys.environ['TRAVIS_JOB_NUMBER'].replace('.', '_')
+                else:
+                    self.jid = 'Z' + user + \
+                        chr(ord('A') + sys.version_info[0]) + \
+                        chr(ord('A') + sys.version_info[1])
+
+                self.project_a = self.jid + 'A'  # old XSS
                 self.project_a_name = "Test user=%s key=%s A" \
                                       % (getpass.getuser(), self.project_a)
-                self.project_b = prefix + 'B'  # old BULK
+                self.project_b = self.jid + 'B'  # old BULK
                 self.project_b_name = "Test user=%s key=%s B" \
                                       % (getpass.getuser(), self.project_b)
 
@@ -1754,11 +1767,12 @@ class WebsudoTests(unittest.TestCase):
 class UserAdministrationTests(unittest.TestCase):
 
     def setUp(self):
-        self.jira = JiraTestManager().jira_admin
-        self.test_username = "test_%s" % JiraTestManager().project_a
+        self.test_manager = JiraTestManager()
+        self.jira = self.test_manager.jira_admin
+        self.test_username = "test_%s" % self.test_manager.project_a
         self.test_email = "%s@example.com" % self.test_username
         self.test_password = rndpassword()
-        self.test_groupname = 'testGroupFor_%s' % JiraTestManager().project_a
+        self.test_groupname = 'testGroupFor_%s' % self.test_manager.project_a
 
     def test_add_and_remove_user(self):
 
